@@ -1,4 +1,4 @@
-const BASE = import.meta.env.PROD ? '' : '/api';
+const BASE = '/api';
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('token');
