@@ -110,10 +110,12 @@ async function handleSelect(sql, params) {
   // Flatten JOIN results
   const result = (data || []).map(row => {
     if (row.airports) {
-      return { ...row, airport_name: row.airports.name, airport_code: row.airports.code, ...row.airports };
+      const { airports, ...rest } = row;
+      return { ...rest, airport_name: airports.name, airport_code: airports.code };
     }
     if (row.ports) {
-      return { ...row, port_name: row.ports.name, port_code: row.ports.code, ...row.ports };
+      const { ports, ...rest } = row;
+      return { ...rest, port_name: ports.name, port_code: ports.code };
     }
     return row;
   });

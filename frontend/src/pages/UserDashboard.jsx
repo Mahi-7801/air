@@ -15,7 +15,6 @@ export default function UserDashboard() {
   const [search, setSearch] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [user, setUser] = useState(null);
-  const [apCounts, setApCounts] = useState(null);
   const [selectedFlight, setSelectedFlight] = useState(null);
   const [lastFlightUpdate, setLastFlightUpdate] = useState(null);
   const navigate = useNavigate();
@@ -36,7 +35,6 @@ export default function UserDashboard() {
     setUser(u);
     
     const loadAq = () => {
-      api.getAPLiveCounts().then(data => { if (!data.error) setApCounts(data); }).catch(console.error);
       api.getAirQuality({ limit: 200 }).then(data => setAirQuality(data)).catch(console.error);
     };
     loadAq();
@@ -72,11 +70,26 @@ export default function UserDashboard() {
                (f.departure?.airport || '').toLowerCase().includes(search.toLowerCase()) ||
                (f.arrival?.airport || '').toLowerCase().includes(search.toLowerCase());
     const ml = locationFilter === '' || f.departure?.iata === locationFilter || f.arrival?.iata === locationFilter ||
-               (f.departure?.airport || '').includes(locationFilter);
+               (f.departure?.airport || '').toUpperCase().includes(locationFilter) ||
+               (f.arrival?.airport || '').toUpperCase().includes(locationFilter);
     return ms && ml;
   });
 
-  const totalActive = apCounts ? Object.values(apCounts).reduce((a, b) => a + b, 0) : 0;
+  // Compute per-airport counts directly from flights data
+  // Checks IATA codes AND label text (e.g. "KJB - Kurnool") since OpenSky often omits IATA
+  const AP_CODES = ['VTZ', 'VGA', 'TIR', 'RJA', 'CDP', 'KJB'];
+  const derivedCounts = {};
+  for (const code of AP_CODES) {
+    derivedCounts[code] = flights.filter(f => {
+      const depIata = (f.departure?.iata || '').toUpperCase();
+      const arrIata = (f.arrival?.iata || '').toUpperCase();
+      const depLabel = (f.departure?.airport || '').toUpperCase();
+      const arrLabel = (f.arrival?.airport || '').toUpperCase();
+      return depIata === code || arrIata === code ||
+             depLabel.startsWith(code) || arrLabel.startsWith(code);
+    }).length;
+  }
+  const totalActive = Object.values(derivedCounts).reduce((a, b) => a + b, 0);
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #060a13 0%, #0a0f1a 50%, #0d1321 100%)', display: 'flex', flexDirection: 'column' }}>
@@ -167,7 +180,7 @@ export default function UserDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem' }}>
             {LOCATIONS.filter(l => l.value !== '').map((loc, idx) => {
               const code = loc.value;
-              const count = apCounts ? (apCounts[code] || 0) : null;
+              const count = derivedCounts[code] ?? 0;
               const isActive = locationFilter === code;
               const hasFlights = count > 0;
               return (
@@ -187,7 +200,7 @@ export default function UserDashboard() {
                     <span style={{ fontSize: '0.65rem', color: 'var(--c-text-muted)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{code}</span>
                   </div>
                   <div style={{ fontSize: '1.6rem', fontWeight: 800, color: hasFlights ? '#6366f1' : 'var(--c-text-muted)', fontFamily: 'Space Grotesk', lineHeight: 1, marginBottom: 2 }}>
-                    {count !== null ? count : '...'}
+                    {loading ? '...' : count}
                   </div>
                   <div style={{ fontSize: '0.6rem', color: hasFlights ? '#34d399' : 'var(--c-text-muted)', fontWeight: 600, fontFamily: 'JetBrains Mono' }}>
                     {hasFlights ? 'ACTIVE FLIGHTS' : 'NO FLIGHTS'}
@@ -331,7 +344,12 @@ export default function UserDashboard() {
             </div>
           </div>
 
-          {airQuality?.records ? (() => {
+          {airQuality === null ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--c-text-muted)', background: 'rgba(15,23,42,0.4)', borderRadius: 16, border: '1px solid var(--c-border)' }}>
+              <div className="spinner" style={{ margin: '0 auto 8px' }} />
+              <p style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem' }}>Loading air quality data…</p>
+            </div>
+          ) : airQuality?.records && airQuality.records.length > 0 ? (() => {
             const filteredAq = airQuality.records.filter(r => {
               const ms = !aqSearch || (r.city || '').toLowerCase().includes(aqSearch.toLowerCase()) || (r.station || '').toLowerCase().includes(aqSearch.toLowerCase());
               const ms2 = !aqStateFilter || r.state === aqStateFilter;
@@ -392,7 +410,9 @@ export default function UserDashboard() {
             );
           })() : (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--c-text-muted)', background: 'rgba(15,23,42,0.4)', borderRadius: 16, border: '1px solid var(--c-border)' }}>
-              Loading air quality data...
+              <Wind size={28} style={{ marginBottom: 8, opacity: 0.3 }} />
+              <p style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem' }}>No air quality data available from Data.gov.in</p>
+              {airQuality?.message && <p style={{ fontSize: '0.7rem', marginTop: 4, color: '#f87171' }}>{airQuality.message}</p>}
             </div>
           )}
         </div>

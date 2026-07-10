@@ -300,10 +300,10 @@ export default function OverviewPage() {
             <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--c-text)' }}>Air Quality Index (Data.gov.in)</h2>
           </div>
           <span style={{ fontSize: '0.7rem', color: 'var(--c-text-muted)', fontFamily: 'JetBrains Mono' }}>
-            {airQuality?.total || 0} total records
+            {airQuality?.total || airQuality?.records?.length || 0} total records
           </span>
         </div>
-        {airQuality?.records ? (
+        {airQuality?.records && airQuality.records.length > 0 ? (
           <div className="table-container table-scroll" style={{ maxHeight: 350, overflow: 'auto', overflowX: 'auto' }}>
             <table style={{ minWidth: 700 }}>
               <thead>
@@ -343,9 +343,16 @@ export default function OverviewPage() {
               </tbody>
             </table>
           </div>
+        ) : airQuality === null ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--c-text-muted)', background: 'var(--c-surface)', borderRadius: 16, border: '1px solid var(--c-border)' }}>
+            <Wind size={24} style={{ marginBottom: 8, opacity: 0.3 }} />
+            <p style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem' }}>Loading air quality data…</p>
+          </div>
         ) : (
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--c-text-muted)', background: 'var(--c-surface)', borderRadius: 16, border: '1px solid var(--c-border)' }}>
-            Loading air quality data...
+            <Wind size={24} style={{ marginBottom: 8, opacity: 0.3 }} />
+            <p style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem' }}>No air quality data available from Data.gov.in</p>
+            {airQuality?.message && <p style={{ fontSize: '0.7rem', marginTop: 4, color: '#f87171' }}>{airQuality.message}</p>}
           </div>
         )}
       </div>
