@@ -39,9 +39,16 @@ async function sendEmail(to, subject, html) {
 
 // ===================== OPENSKY ADS-B DATA =====================
 let openskyToken = { value: null, expiresAt: 0 };
+let openskyBackoff = { failedAt: 0, cooldownMs: 5 * 60 * 1000 }; // 5-min cooldown after failure
 
 async function getOpenSkyToken() {
   if (openskyToken.value && Date.now() < openskyToken.expiresAt) return openskyToken.value;
+
+  // If we recently failed, don't retry until cooldown expires
+  if (openskyBackoff.failedAt && Date.now() - openskyBackoff.failedAt < openskyBackoff.cooldownMs) {
+    return null; // silently skip — already logged the first failure
+  }
+
   try {
     const res = await fetch(process.env.OPENSKY_TOKEN_URL, {
       method: 'POST',
@@ -56,10 +63,14 @@ async function getOpenSkyToken() {
     if (data.access_token) {
       openskyToken.value = data.access_token;
       openskyToken.expiresAt = Date.now() + (data.expires_in - 60) * 1000;
+      openskyBackoff.failedAt = 0; // reset on success
       return openskyToken.value;
     }
   } catch (e) {
-    console.error('OpenSky token error:', e.message);
+    if (!openskyBackoff.failedAt) {
+      console.error('OpenSky token error:', e.message, '— will retry after 5 min cooldown');
+    }
+    openskyBackoff.failedAt = Date.now();
   }
   return null;
 }
@@ -72,7 +83,6 @@ async function getOpenSkyStates() {
 
   const token = await getOpenSkyToken();
   if (!token) {
-    console.warn('OpenSky token unavailable - no live state data available');
     return null;
   }
 
@@ -337,30 +347,6 @@ const AP_IATA_ICAO = {
 
 let openskyFlightsCache = { data: null, timestamp: 0 };
 
-// Demo flights data for when API keys are not configured
-const DEMO_FLIGHTS = [
-  { flight: { iata: '6E 2045', icao: 'IGO2045' }, airline: { name: 'IndiGo', icao: 'IGO' }, departure: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '3', terminal: '1' }, arrival: { iata: 'HYD', airport: 'Hyderabad', gate: '5', terminal: '1' }, flight_status: 'active', live: { latitude: 17.4500, longitude: 81.5000, altitude: 10668, speed_horizontal: 820, direction: 245, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Between Vizag & Hyderabad' } },
-  { flight: { iata: '6E 891', icao: 'IGO891' }, airline: { name: 'IndiGo', icao: 'IGO' }, departure: { iata: 'VGA', airport: 'Vijayawada', gate: '2', terminal: '1' }, arrival: { iata: 'DEL', airport: 'Delhi', gate: '8', terminal: '1D' }, flight_status: 'active', live: { latitude: 20.1200, longitude: 79.8500, altitude: 11277, speed_horizontal: 850, direction: 320, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Nagpur Region' } },
-  { flight: { iata: 'AI 522', icao: 'AIC522' }, airline: { name: 'Air India', icao: 'AIC' }, departure: { iata: 'TIR', airport: 'Tirupati', gate: '1', terminal: '1' }, arrival: { iata: 'BLR', airport: 'Bengaluru', gate: '4', terminal: '1' }, flight_status: 'active', live: { latitude: 14.2500, longitude: 78.5000, altitude: 9144, speed_horizontal: 760, direction: 195, vertical_rate: -305, is_ground: false, source: 'demo', position_label: 'Anantapur Region' } },
-  { flight: { iata: 'SG 378', icao: 'SEJ378' }, airline: { name: 'SpiceJet', icao: 'SEJ' }, departure: { iata: 'RJA', airport: 'Rajahmundry', gate: '1', terminal: '1' }, arrival: { iata: 'MAA', airport: 'Chennai', gate: '3', terminal: '1' }, flight_status: 'active', live: { latitude: 15.8000, longitude: 80.2000, altitude: 8534, speed_horizontal: 720, direction: 170, vertical_rate: 152, is_ground: false, source: 'demo', position_label: 'Ongole Region' } },
-  { flight: { iata: 'I5 1542', icao: 'IAD1542' }, airline: { name: 'AirAsia India', icao: 'IAD' }, departure: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '5', terminal: '1' }, arrival: { iata: 'CCU', airport: 'Kolkata', gate: '2', terminal: '1' }, flight_status: 'active', live: { latitude: 18.5000, longitude: 84.2000, altitude: 9754, speed_horizontal: 790, direction: 35, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Srikakulam Region' } },
-  { flight: { iata: '6E 627', icao: 'IGO627' }, airline: { name: 'IndiGo', icao: 'IGO' }, departure: { iata: 'HYD', airport: 'Hyderabad', gate: '7', terminal: '1' }, arrival: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '2', terminal: '1' }, flight_status: 'active', live: { latitude: 16.8000, longitude: 80.1000, altitude: 10058, speed_horizontal: 830, direction: 105, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Vijayawada Region' } },
-  { flight: { iata: 'UK 876', icao: 'VUK876' }, airline: { name: 'Vistara', icao: 'VUK' }, departure: { iata: 'BLR', airport: 'Bengaluru', gate: '6', terminal: '1' }, arrival: { iata: 'TIR', airport: 'Tirupati', gate: '1', terminal: '1' }, flight_status: 'active', live: { latitude: 14.0000, longitude: 78.8000, altitude: 7620, speed_horizontal: 680, direction: 65, vertical_rate: -457, is_ground: false, source: 'demo', position_label: 'Chittoor Region' } },
-  { flight: { iata: 'G8 412', icao: 'GOX412' }, airline: { name: 'GoFirst', icao: 'GOX' }, departure: { iata: 'VGA', airport: 'Vijayawada', gate: '4', terminal: '1' }, arrival: { iata: 'BOM', airport: 'Mumbai', gate: '9', terminal: '1' }, flight_status: 'active', live: { latitude: 18.2000, longitude: 76.5000, altitude: 11582, speed_horizontal: 870, direction: 290, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Solapur Region' } },
-  { flight: { iata: 'IX 184', icao: 'AXB184' }, airline: { name: 'Air India Express', icao: 'AXB' }, departure: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '1', terminal: '1' }, arrival: { iata: 'DXB', airport: 'Dubai', gate: '12', terminal: '3' }, flight_status: 'active', live: { latitude: 19.5000, longitude: 85.3000, altitude: 12192, speed_horizontal: 900, direction: 260, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Bhubaneswar Region' } },
-  { flight: { iata: '6E 539', icao: 'IGO539' }, airline: { name: 'IndiGo', icao: 'IGO' }, departure: { iata: 'DEL', airport: 'Delhi', gate: '11', terminal: '1D' }, arrival: { iata: 'VGA', airport: 'Vijayawada', gate: '3', terminal: '1' }, flight_status: 'active', live: { latitude: 19.8000, longitude: 78.9000, altitude: 10973, speed_horizontal: 840, direction: 145, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Nagpur Region' } },
-  { flight: { iata: 'SG 456', icao: 'SEJ456' }, airline: { name: 'SpiceJet', icao: 'SEJ' }, departure: { iata: 'MAA', airport: 'Chennai', gate: '5', terminal: '1' }, arrival: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '4', terminal: '1' }, flight_status: 'active', live: { latitude: 15.5000, longitude: 80.8000, altitude: 9449, speed_horizontal: 770, direction: 350, vertical_rate: 152, is_ground: false, source: 'demo', position_label: 'Nellore Region' } },
-  { flight: { iata: 'AI 762', icao: 'AIC762' }, airline: { name: 'Air India', icao: 'AIC' }, departure: { iata: 'CCU', airport: 'Kolkata', gate: '2', terminal: '1' }, arrival: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '6', terminal: '1' }, flight_status: 'active', live: { latitude: 18.9000, longitude: 84.8000, altitude: 10363, speed_horizontal: 810, direction: 215, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Berhampur Region' } },
-  { flight: { iata: '6E 714', icao: 'IGO714' }, airline: { name: 'IndiGo', icao: 'IGO' }, departure: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '2', terminal: '1' }, arrival: { iata: 'BLR', airport: 'Bengaluru', gate: '7', terminal: '1' }, flight_status: 'active', live: { latitude: 15.2000, longitude: 79.5000, altitude: 10058, speed_horizontal: 800, direction: 230, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Kurnool Region' } },
-  { flight: { iata: 'I5 1688', icao: 'IAD1688' }, airline: { name: 'AirAsia India', icao: 'IAD' }, departure: { iata: 'HYD', airport: 'Hyderabad', gate: '3', terminal: '1' }, arrival: { iata: 'RJA', airport: 'Rajahmundry', gate: '1', terminal: '1' }, flight_status: 'active', live: { latitude: 17.2000, longitude: 80.5000, altitude: 8230, speed_horizontal: 710, direction: 85, vertical_rate: -200, is_ground: false, source: 'demo', position_label: 'Eluru Region' } },
-  { flight: { iata: 'UK 630', icao: 'VUK630' }, airline: { name: 'Vistara', icao: 'VUK' }, departure: { iata: 'BOM', airport: 'Mumbai', gate: '8', terminal: '1' }, arrival: { iata: 'VGA', airport: 'Vijayawada', gate: '2', terminal: '1' }, flight_status: 'active', live: { latitude: 17.5000, longitude: 77.2000, altitude: 11277, speed_horizontal: 860, direction: 115, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Hyderabad Region' } },
-  { flight: { iata: 'IX 556', icao: 'AXB556' }, airline: { name: 'Air India Express', icao: 'AXB' }, departure: { iata: 'MAA', airport: 'Chennai', gate: '4', terminal: '1' }, arrival: { iata: 'TIR', airport: 'Tirupati', gate: '1', terminal: '1' }, flight_status: 'active', live: { latitude: 13.8000, longitude: 79.8000, altitude: 6096, speed_horizontal: 650, direction: 295, vertical_rate: -610, is_ground: false, source: 'demo', position_label: 'Chittoor Region' } },
-  { flight: { iata: '6E 312', icao: 'IGO312' }, airline: { name: 'IndiGo', icao: 'IGO' }, departure: { iata: 'VTZ', airport: 'Visakhapatnam', gate: '7', terminal: '1' }, arrival: { iata: 'PAT', airport: 'Patna', gate: '3', terminal: '1' }, flight_status: 'active', live: { latitude: 19.2000, longitude: 83.8000, altitude: 11582, speed_horizontal: 880, direction: 340, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Sambalpur Region' } },
-  { flight: { iata: 'G8 305', icao: 'GOX305' }, airline: { name: 'GoFirst', icao: 'GOX' }, departure: { iata: 'KJB', airport: 'Kurnool', gate: '1', terminal: '1' }, arrival: { iata: 'HYD', airport: 'Hyderabad', gate: '5', terminal: '1' }, flight_status: 'active', live: { latitude: 16.1000, longitude: 78.5000, altitude: 7010, speed_horizontal: 690, direction: 55, vertical_rate: 305, is_ground: false, source: 'demo', position_label: 'Mahabubnagar Region' } },
-  { flight: { iata: 'SG 892', icao: 'SEJ892' }, airline: { name: 'SpiceJet', icao: 'SEJ' }, departure: { iata: 'CDP', airport: 'Kadapa', gate: '1', terminal: '1' }, arrival: { iata: 'BLR', airport: 'Bengaluru', gate: '2', terminal: '1' }, flight_status: 'active', live: { latitude: 13.9000, longitude: 77.8000, altitude: 7315, speed_horizontal: 700, direction: 210, vertical_rate: -250, is_ground: false, source: 'demo', position_label: 'Anantapur Region' } },
-  { flight: { iata: '6E 104', icao: 'IGO104' }, airline: { name: 'IndiGo', icao: 'IGO' }, departure: { iata: 'HYD', airport: 'Hyderabad', gate: '9', terminal: '1' }, arrival: { iata: 'CCU', airport: 'Kolkata', gate: '4', terminal: '1' }, flight_status: 'active', live: { latitude: 18.1000, longitude: 81.8000, altitude: 10973, speed_horizontal: 840, direction: 55, vertical_rate: 0, is_ground: false, source: 'demo', position_label: 'Rajahmundry Region' } },
-];
-
 async function getOpenSkyFlightsForAP(iata) {
   const now = Date.now();
   if (openskyFlightsCache.data && now - openskyFlightsCache.timestamp < 10000) {
@@ -376,7 +362,6 @@ async function getOpenSkyFlightsForAP(iata) {
 
   const token = await getOpenSkyToken();
   if (!token) {
-    console.warn('OpenSky token unavailable - no live flight data available');
     return [];
   }
 
@@ -520,9 +505,9 @@ app.get('/api/live-flights', async (req, res) => {
     const apiKey = process.env.AVIATIONSTACK_API_KEY;
     const iata = req.query.iata;
 
-    // Try AviationStack first
+    // Try AviationStack first (skip if rate-limited)
     let aviationStackData = null;
-    if (apiKey) {
+    if (apiKey && !aviationStackRateLimited) {
       let url = `http://api.aviationstack.com/v1/flights?access_key=${apiKey}&flight_status=active&limit=100`;
       if (iata) url += `&dep_iata=${iata}`;
 
@@ -532,20 +517,32 @@ app.get('/api/live-flights', async (req, res) => {
         if (data.data && data.data.length > 0) {
           aviationStackData = data;
         } else if (data.error) {
-          console.log('AviationStack error:', data.error.message || JSON.stringify(data.error));
+          const errMsg = data.error.message || JSON.stringify(data.error);
+          if (data.error.code === 104 || errMsg.toLowerCase().includes('limit')) {
+            aviationStackRateLimited = true;
+            console.warn('AviationStack monthly limit reached — disabled for this session');
+          } else {
+            console.log('AviationStack error:', errMsg);
+          }
         }
       } catch (e) {
         console.log('AviationStack timeout/error:', e.message);
       }
 
       // If no departures for iata, try arrivals
-      if (iata && (!aviationStackData || !aviationStackData.data || aviationStackData.data.length === 0)) {
+      if (iata && !aviationStackRateLimited && (!aviationStackData || !aviationStackData.data || aviationStackData.data.length === 0)) {
         try {
           const arrUrl = `http://api.aviationstack.com/v1/flights?access_key=${apiKey}&flight_status=active&limit=100&arr_iata=${iata}`;
           const arrRes = await fetch(arrUrl, { signal: AbortSignal.timeout(15000) });
           const arrData = await arrRes.json();
           if (arrData.data && arrData.data.length > 0) {
             aviationStackData = arrData;
+          } else if (arrData.error) {
+            const errMsg = arrData.error.message || JSON.stringify(arrData.error);
+            if (arrData.error.code === 104 || errMsg.toLowerCase().includes('limit')) {
+              aviationStackRateLimited = true;
+              console.warn('AviationStack monthly limit reached — disabled for this session');
+            }
           }
         } catch (e) { /* ignore */ }
       }
@@ -554,22 +551,24 @@ app.get('/api/live-flights', async (req, res) => {
     // If AviationStack returned data, enrich with OpenSky and return
     if (aviationStackData && aviationStackData.data && aviationStackData.data.length > 0) {
       let openskyStates = null;
-      try { openskyStates = await getOpenSkyStates(); } catch(e) { /* ignore */ }
+      try { openskyStates = await getOpenSkyStates(); } catch (e) { /* ignore */ }
       if (openskyStates) {
         aviationStackData.data = enrichFlightsWithOpenSky(aviationStackData.data, openskyStates);
       }
       return res.json(aviationStackData);
     }
 
-    // Fallback: use OpenSky directly for AP region (returns empty if no token/API fails)
+    // Fallback: use OpenSky directly for AP region
     const openskyFlights = await getOpenSkyFlightsForAP(iata);
-    if (!openskyFlights || openskyFlights.length === 0) {
-      return res.json({ data: [], source: 'no-data', message: 'Live flight data unavailable. OpenSky API may be down or rate-limited.' });
+    if (openskyFlights && openskyFlights.length > 0) {
+      return res.json({ data: openskyFlights, source: 'opensky-adsb' });
     }
-    return res.json({ data: openskyFlights, source: 'opensky-adsb' });
+
+    // No live data available from any source
+    return res.json({ data: [], source: 'unavailable', message: 'Live flight data is currently unavailable. AviationStack and OpenSky APIs are down or rate-limited.' });
   } catch (err) {
     console.error('Live flights error:', err.message);
-    res.json({ data: [], error: err.message });
+    res.json({ data: [], source: 'unavailable', error: err.message });
   }
 });
 
@@ -578,7 +577,7 @@ function enrichFlightsWithOpenSky(flights, openskyMap) {
     const icaoCallsign = (f.flight?.icao || '').trim().toUpperCase();
     const iataCallsign = (f.flight?.iata || '').trim().toUpperCase();
     const airlineIcao = (f.airline?.icao || '').trim().toUpperCase();
-    
+
     let match = null;
     if (icaoCallsign && openskyMap[icaoCallsign]) match = openskyMap[icaoCallsign];
     if (!match && airlineIcao && icaoCallsign) {
@@ -632,7 +631,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 let apLiveCache = { data: null, timestamp: 0 };
-let aviationStackRateLimited = false; // true when monthly limit hit
+let aviationStackRateLimited = false; // true when monthly limit hit — persists for server lifetime
 
 app.get('/api/ap-live-counts', async (req, res) => {
   const now = Date.now();
@@ -654,7 +653,7 @@ app.get('/api/ap-live-counts', async (req, res) => {
 
       if (testRes?.error?.code === 104 || (testRes?.error?.message || '').toLowerCase().includes('limit')) {
         aviationStackRateLimited = true;
-        console.warn('AviationStack monthly limit hit - switching to OpenSky for counts');
+        console.warn('AviationStack monthly limit hit — disabled for this session');
       } else if (testRes?.data) {
         // AviationStack works - fetch all airports
         counts['VTZ'] = testRes.data.length;
@@ -814,7 +813,7 @@ app.get('/api/overview', async (req, res) => {
 app.get('/api/overview/trend', async (req, res) => {
   try {
     const [forecasts] = await db.query('SELECT * FROM forecasts');
-    
+
     // Group by year
     const byYear = {};
     forecasts.forEach(f => {
@@ -839,7 +838,7 @@ app.get('/api/overview/airports-table', async (req, res) => {
     const rows = airports.map(a => {
       const f2035 = forecasts.find(f => f.airport_id === a.id && f.year === 2035);
       const allF = forecasts.filter(f => f.airport_id === a.id);
-      
+
       let last_updated = null;
       if (allF.length > 0) {
         last_updated = allF.map(f => new Date(f.created_at)).reduce((max, d) => d > max ? d : max, new Date(0));
@@ -853,7 +852,6 @@ app.get('/api/overview/airports-table', async (req, res) => {
         capacity_2035: a.capacity_2035,
         passengers_2035: f2035 ? (f2035.domestic_passengers + f2035.international_passengers) : 0,
         cargo_2035: f2035 ? f2035.cargo_mt : 0,
-        hindcast_accuracy: Math.round((85 + Math.random() * 10) * 10) / 10,
         last_updated: last_updated
       };
     });

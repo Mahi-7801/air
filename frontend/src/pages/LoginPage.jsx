@@ -29,11 +29,6 @@ export default function LoginPage() {
     }
   };
 
-  const fillDemo = (role) => {
-    setEmail(`${role}@aptransport.gov.in`);
-    setPassword(role === 'admin' ? 'admin123' : 'viewer123');
-    setError('');
-  };
 
   return (
     <div style={{
@@ -254,34 +249,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Demo accounts */}
-          <div style={{ marginTop: '2rem', padding: '1.25rem', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12 }}>
-            <p style={{ fontSize: '0.7rem', color: 'var(--c-text-muted)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.75rem' }}>
-              Demo Credentials
-            </p>
-            <div className="demo-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {['admin', 'viewer'].map(role => (
-                <button
-                  key={role}
-                  id={`demo-${role}`}
-                  onClick={() => fillDemo(role)}
-                  style={{
-                    padding: '10px 12px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
-                    background: 'var(--c-surface-2)', border: '1px solid var(--c-border)',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.background = 'rgba(99,102,241,0.08)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.background = 'var(--c-surface-2)'; }}
-                >
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--c-text)', textTransform: 'capitalize' }}>{role}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--c-text-muted)', fontFamily: 'JetBrains Mono', marginTop: 2 }}>
-                    {role}@aptransport.gov.in
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
 
           <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--c-text-muted)', marginTop: '1.5rem' }}>
             Government of Andhra Pradesh — APADCL / APMB

@@ -4,7 +4,7 @@ import KPICard from '../../components/KPICard';
 import ForecastChart from '../../components/ForecastChart';
 import StatusBadge from '../../components/StatusBadge';
 import FlightModeModal from '../../components/FlightModeModal';
-import { Users, Package, Plane, AlertTriangle, Activity, RefreshCw, Calendar, Clock, Wind, TrendingUp, X, MapPin, Gauge } from 'lucide-react';
+import { Users, Package, Plane, AlertTriangle, Activity, RefreshCw, Calendar, Clock, Wind, TrendingUp, X, MapPin } from 'lucide-react';
 
 const fmt = (v) => {
   if (!v) return '0';
@@ -246,7 +246,6 @@ export default function OverviewPage() {
                 <th>Code</th>
                 <th>Status</th>
                 <th>2035 Capacity</th>
-                <th>Accuracy</th>
                 <th>Last Updated</th>
               </tr>
             </thead>
@@ -266,11 +265,6 @@ export default function OverviewPage() {
                   </td>
                   <td><StatusBadge status={a.status} /></td>
                   <td className="data-tag">{fmt(a.capacity_2035)}</td>
-                  <td>
-                    <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem', fontWeight: 700, color: '#34d399' }}>
-                      {a.hindcast_accuracy}%
-                    </span>
-                  </td>
                   <td style={{ color: 'var(--c-text-muted)', fontSize: '0.8rem' }}>
                     {a.last_updated ? new Date(a.last_updated).toLocaleDateString() : 'N/A'}
                   </td>
@@ -375,7 +369,6 @@ export default function OverviewPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               {[
                 { label: '2035 Capacity', value: fmt(selectedAirport.capacity_2035), color: '#818cf8', icon: Package },
-                { label: 'Forecast Accuracy', value: `${selectedAirport.hindcast_accuracy}%`, color: '#34d399', icon: Gauge },
                 { label: 'Projected Passengers', value: fmt(selectedAirport.passengers_2035), color: '#22d3ee', icon: Users },
                 { label: 'Projected Cargo', value: `${fmt(selectedAirport.cargo_2035)} MT`, color: '#f59e0b', icon: Package },
               ].map((item, idx) => (
