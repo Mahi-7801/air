@@ -4,6 +4,6 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://ap-transport-backend.onrender.com/api/$1" },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ]
 }
